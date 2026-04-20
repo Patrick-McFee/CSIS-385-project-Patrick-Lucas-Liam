@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -64,13 +65,10 @@ public class MSTAnalysis {
 
     /**
      * Main method used to take input and test the MST algorithms
-     * @param args[0] .tmg map data file to load
-     * @param args[1] number of trials to run
-     * @param args[2] algorithm to be used (prim or kruskal)
      */
     public static void main(String[] args) throws IOException {
-        if (args.length != 3) {
-            System.out.println("Usage: java MSTAnalysis <tmg_file> <trials> <algorithm>");
+        if (args.length < 3 || args.length > 4) {
+            System.out.println("Usage: java MSTAnalysis <tmg_file> <trials> <algorithm> [output_pth_file]");
             System.out.println("Algorithms: prim, kruskal");
             System.exit(1);
         }
@@ -78,6 +76,7 @@ public class MSTAnalysis {
         String fileName = args[0];
         int trials = Integer.parseInt(args[1]);
         String algorithm = args[2].toLowerCase();
+        String outputFileName = args.length == 4 ? args[3] : null;
 
         // Parse the HighwayGraph once to avoid timing the file I/O
         Scanner s = new Scanner(new File(fileName));
@@ -87,12 +86,14 @@ public class MSTAnalysis {
         long totalComparisons = 0;
         long totalOperations = 0;
         long totalTimeNs = 0;
+        
+        List<HighwayEdge> mstEdges = null;
 
         for (int t = 0; t < trials; t++) {
             Metrics metrics = new Metrics();
 
             long startTime = System.nanoTime();
-            runMST(graph, algorithm, metrics);
+            mstEdges = runMST(graph, algorithm, metrics);
             long endTime = System.nanoTime();
 
             totalTimeNs += (endTime - startTime);
@@ -111,35 +112,28 @@ public class MSTAnalysis {
         System.out.printf("%d %d %s %s %.6f %d %d%n", 
             graph.vertices.length, graph.numEdges, algorithm, shortName, 
             avgTimeSeconds, avgComparisons, avgOperations);
+            
+        // If an output file name was provided, write the MST to it in .pth format
+        if (outputFileName != null && mstEdges != null && !mstEdges.isEmpty()) {
+            writeMSTToPTH(graph, mstEdges, outputFileName);
+        }
     }
 
-    /**
-     * Decides which MST algorithm to use based on user input
-     * @param graph HighwayGraph to find the MST for
-     * @param algorithm MST algorithm to be used
-     * @param metrics variable pair used to track comparisons and operations
-     */
-    private static void runMST(HighwayGraph graph, String algorithm, Metrics metrics) {
+    private static List<HighwayEdge> runMST(HighwayGraph graph, String algorithm, Metrics metrics) {
         switch (algorithm) {
             case "prim":
-                primMST(graph, metrics);
-                break;
+                return primMST(graph, metrics);
             case "kruskal":
-                kruskalMST(graph, metrics);
-                break;
+                return kruskalMST(graph, metrics);
             default:
                 throw new IllegalArgumentException("Unknown algorithm: " + algorithm);
         }
     }
 
-    /**
-     * Finds the Minimum Spanning Tree using Prim's Algorithm
-     * @param graph The input highway graph
-     * @param metrics tracks edge weight comparisons and PQ operations
-     */
-    private static void primMST(HighwayGraph graph, Metrics metrics) {
+    private static List<HighwayEdge> primMST(HighwayGraph graph, Metrics metrics) {
         int numVertices = graph.vertices.length;
         boolean[] inMST = new boolean[numVertices];
+        List<HighwayEdge> mstEdges = new ArrayList<>();
         
         // Priority Queue ordered by edge length
         PriorityQueue<HighwayEdge> pq = new PriorityQueue<>(new Comparator<HighwayEdge>() {
@@ -171,6 +165,7 @@ public class MSTAnalysis {
             if (!inMST[nextVertex]) {
                 inMST[nextVertex] = true;
                 edgesInMST++;
+                mstEdges.add(minEdge); // Capture the edge for our output file
 
                 // Add all incident edges from the newly added vertex to the PQ
                 HighwayEdge adjacent = graph.vertices[nextVertex].head;
@@ -183,16 +178,13 @@ public class MSTAnalysis {
                 }
             }
         }
+        return mstEdges;
     }
 
-    /**
-     * Finds the Minimum Spanning Tree using Kruskal's Algorithm
-     * @param graph The input highway graph
-     * @param metrics tracks edge weight comparisons and Union-Find operations
-     */
-    private static void kruskalMST(HighwayGraph graph, Metrics metrics) {
+    private static List<HighwayEdge> kruskalMST(HighwayGraph graph, Metrics metrics) {
         int numVertices = graph.vertices.length;
         List<HighwayEdge> allEdges = new ArrayList<>();
+        List<HighwayEdge> mstEdges = new ArrayList<>();
 
         // Harvest all unique edges from the adjacency lists
         for (HighwayVertex v : graph.vertices) {
@@ -230,12 +222,52 @@ public class MSTAnalysis {
                 uf.union(edge.source, edge.dest);
                 metrics.operations++; // Counting union operations
                 edgesInMST++;
+                mstEdges.add(edge); // Capture the edge for our output file
 
                 // Optimization: stop early if we've added V-1 edges
                 if (edgesInMST == numVertices - 1) {
                     break;
                 }
             }
+        }
+        return mstEdges;
+    }
+
+    /**
+     * Writes the resulting Minimum Spanning Tree out to a standard .pth path file
+     * matching the formatting of HDX/METAL visualization tools.
+     */
+    private static void writeMSTToPTH(HighwayGraph graph, List<HighwayEdge> mstEdges, String outputFileName) {
+        try (PrintWriter pw = new PrintWriter(outputFileName)) {
+            if (mstEdges.isEmpty()) {
+                System.out.println("MST is empty, nothing to write.");
+                return;
+            }
+
+            // The .pth format requires a START line. We use the source of the first edge.
+            HighwayVertex startVertex = graph.vertices[mstEdges.get(0).source];
+            pw.println("START " + startVertex.label + " (" + startVertex.point.lat + "," + startVertex.point.lng + ")");
+            
+            // Output each edge in the format: "EdgeLabel (shape_points...) DestLabel (DestLat,DestLng)"
+            for (HighwayEdge e : mstEdges) {
+                HighwayVertex destVertex = graph.vertices[e.dest];
+                
+                // Start with the edge label
+                pw.print(e.label + " ");
+                
+                // Include intermediate shape points if the edge has them
+                if (e.shapePoints != null && e.shapePoints.length > 0) {
+                    for (LatLng p : e.shapePoints) {
+                        pw.print("(" + p.lat + "," + p.lng + ") ");
+                    }
+                }
+                
+                // End with the destination label and its coordinates
+                pw.println(destVertex.label + " (" + destVertex.point.lat + "," + destVertex.point.lng + ")");
+            }
+            System.out.println("-> MST successfully written to " + outputFileName);
+        } catch (IOException ex) {
+            System.err.println("Error writing to output file: " + ex.getMessage());
         }
     }
 }
