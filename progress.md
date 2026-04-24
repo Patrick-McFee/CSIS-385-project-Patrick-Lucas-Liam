@@ -22,3 +22,17 @@
       -Collect the runtime data and compare performance across graphs
       -Overall, catch up on the original timeline next week by starting the full empirical study. Then prepare
       reuslts for visualzation and presentation for the showcase on May 1st.
+
+## Progress Report #3 (4/24):
+# Current status:
+      -As of 4/24, testing for both Prim’s and Kruskal’s Algorithms has been completed successfully.
+      -We conducted our empirical analysis and collected runtime data across different graph inputs.
+      -Initial comparisons between the two algorithms have been made, highlighting differences in performance depending on graph density and size.
+      -We have also created our presentation slideshow in preparation for the showcase on May 1st.
+      -Overall, the project is now back on track with the original timeline after catching up from last week.
+
+# Next Steps:
+      -Finalize the written report, including methodology, results, and analysis of our findings.
+      -Refine visualizations (graphs/charts) to clearly present performance comparisons.
+      -Review and polish the slideshow to ensure clarity and strong delivery for the presentation.
+      -Prepare for the showcase by practicing presentation and ensuring all components of the project are complete and cohesive.
